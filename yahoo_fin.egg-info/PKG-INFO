@@ -12,6 +12,8 @@ Requires-Dist: requests_html
 Requires-Dist: feedparser
 Requires-Dist: requests
 Requires-Dist: pandas
+Requires-Dist: pycryptodome
+Requires-Dist: lxml_html_clean
 Dynamic: author
 Dynamic: author-email
 Dynamic: home-page
