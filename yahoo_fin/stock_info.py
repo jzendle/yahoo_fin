@@ -14,21 +14,15 @@ from Crypto.Util.Padding import unpad
 # For pretty print
 from pprint import pp
 
+# let any import exceptions to top level
+from requests_html import HTMLSession
 
-try:
-    from requests_html import HTMLSession
-except Exception:
-    print("""Warning - Certain functionality 
-             requires requests_html, which is not installed.
-             
-             Install using:
-             pip install requests_html
-
-             After installation, you may have to restart your Python session.""")
 
 
 base_url = "https://query1.finance.yahoo.com/v8/finance/chart/"
-default_headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
+
+default_headers= {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+
 
 def build_url(ticker, start_date = None, end_date = None, interval = "1d"):
     
@@ -97,7 +91,7 @@ def get_data(ticker, start_date = None, end_date = None, index_as_date = True,
     
     
     if not resp.ok:
-        raise AssertionError(resp.json())
+        raise AssertionError(resp.text)
         
     
     # get JSON response
@@ -131,12 +125,24 @@ def get_data(ticker, start_date = None, end_date = None, index_as_date = True,
         
     return frame
 
+# index component functions
 
+def _read_html_with_headers(url):
+    # pd.read_html does not allow specific headers so use requests to get valid response
+    response = requests.get(url, headers=default_headers)
 
-def tickers_sp500(include_company_data = False):
+    if not response.ok:
+        raise AssertionError(response)
+    return response
+
+def tickers_sp500(include_company_data=False):
     '''Downloads list of tickers currently listed in the S&P 500 '''
     # get list of all S&P 500 stocks
-    sp500 = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
+    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+
+    response = _read_html_with_headers(url)
+
+    sp500 = pd.read_html(io.StringIO(response.text))[0]
     sp500["Symbol"] = sp500["Symbol"].str.replace(".", "-")
 
     if include_company_data:
@@ -144,7 +150,7 @@ def tickers_sp500(include_company_data = False):
 
     sp_tickers = sp500.Symbol.tolist()
     sp_tickers = sorted(sp_tickers)
-    
+
     return sp_tickers
 
 
@@ -209,9 +215,11 @@ def tickers_dow(include_company_data = False):
     
     '''Downloads list of currently traded tickers on the Dow'''
 
-    site = "https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average"
+    url = "https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average"
+
+    response = _read_html_with_headers(url)
     
-    table = pd.read_html(site, attrs = {"id":"constituents"})[0]
+    table = pd.read_html(io.StringIO(response.text), attrs = {"id":"constituents"})[0]
     
     if include_company_data:
         return table
@@ -225,7 +233,12 @@ def tickers_ibovespa(include_company_data = False):
     
     '''Downloads list of currently traded tickers on the Ibovespa, Brazil'''
 
-    table = pd.read_html("https://pt.wikipedia.org/wiki/Lista_de_companhias_citadas_no_Ibovespa")[0]
+    url = "https://pt.wikipedia.org/wiki/Lista_de_companhias_citadas_no_Ibovespa"
+    response = _read_html_with_headers(url)
+
+    table = pd.read_html(io.StringIO(response.text))[0]
+
+
     table.columns = ["Symbol", "Share", "Sector", "Type", "Site"]
     
     if include_company_data:
@@ -237,12 +250,14 @@ def tickers_ibovespa(include_company_data = False):
 
 
 
-def tickers_nifty50(include_company_data = False, headers = {'User-agent': 'Mozilla/5.0'}):
+def tickers_nifty50(include_company_data = False, headers = default_headers):
 
     '''Downloads list of currently traded tickers on the NIFTY 50, India'''
 
-    site = "https://finance.yahoo.com/quote/%5ENSEI/components?p=%5ENSEI"
-    table = pd.read_html(requests.get(site, headers=headers).text)[0]
+    url = "https://finance.yahoo.com/quote/%5ENSEI/components?p=%5ENSEI"
+    response = _read_html_with_headers(url)
+
+    table = pd.read_html(io.StringIO(response.text))[0]
     
     if include_company_data:
         return table
@@ -264,7 +279,7 @@ def tickers_ftse100(include_company_data = False):
     
     '''Downloads a list of the tickers traded on the FTSE 100 index'''
     
-    table = pd.read_html("https://en.wikipedia.org/wiki/FTSE_100_Index", attrs = {"id": "constituents"})[0]
+    table = pd.read_html(io.StringIO("https://en.wikipedia.org/wiki/FTSE_100_Index"), attrs = {"id": "constituents"})[0]
     
     if include_company_data:
         return table
@@ -277,7 +292,7 @@ def tickers_ftse250(include_company_data = False):
     
     '''Downloads a list of the tickers traded on the FTSE 250 index'''
     
-    table = pd.read_html("https://en.wikipedia.org/wiki/FTSE_250_Index", attrs = {"id": "constituents"})[0]
+    table = pd.read_html(io.StringIO("https://en.wikipedia.org/wiki/FTSE_250_Index"), attrs = {"id": "constituents"})[0]
     
     table.columns = ["Company", "Ticker"]
     
@@ -300,7 +315,7 @@ def get_quote_table(ticker , dict_result = True, headers = {'User-agent': 'Mozil
 
     site = "https://finance.yahoo.com/quote/" + ticker + "?p=" + ticker
     
-    tables = pd.read_html(requests.get(site, headers=headers).text)
+    tables = pd.read_html(io.StringIO(requests.get(site, headers=headers).text))
     
     data = pd.concat([tables[0], tables[1]])
     
@@ -338,7 +353,7 @@ def get_stats(ticker, headers = {'User-agent': 'Mozilla/5.0'}):
                  "/key-statistics?p=" + ticker
     
 
-    tables = pd.read_html(requests.get(stats_site, headers=headers).text)
+    tables = pd.read_html(io.StringIO(requests.get(stats_site, headers=headers).text))
     
     tables = [table for table in tables[1:] if table.shape[1] == 2]
     
@@ -365,7 +380,7 @@ def get_stats_valuation(ticker, headers = {'User-agent': 'Mozilla/5.0'}):
                  "/key-statistics?p=" + ticker
     
     
-    tables = pd.read_html(requests.get(stats_site, headers=headers).text)
+    tables = pd.read_html(io.StringIO(requests.get(stats_site, headers=headers).text))
     
     tables = [table for table in tables if "Trailing P/E" in table.iloc[:,0].tolist()]
     
@@ -613,7 +628,7 @@ def get_holders(ticker, headers = {'User-agent': 'Mozilla/5.0'}):
                     ticker + "/holders?p=" + ticker
     
         
-    tables = pd.read_html(requests.get(holders_site, headers=headers).text)
+    tables = pd.read_html(io.StringIO(requests.get(holders_site, headers=headers).text))
     
        
     table_names = ["Major Holders" , "Direct Holders (Forms 3 and 4)" ,
@@ -636,7 +651,7 @@ def get_analysts_info(ticker, headers = {'User-agent': 'Mozilla/5.0'}):
     analysts_site = "https://finance.yahoo.com/quote/" + ticker + \
                      "/analysts?p=" + ticker
     
-    tables = pd.read_html(requests.get(analysts_site, headers=headers).text)
+    tables = pd.read_html(io.StringIO(requests.get(analysts_site, headers=headers).text))
     
     table_names = [table.columns[0] for table in tables]
 
@@ -674,7 +689,7 @@ def _raw_get_daily_info(site):
     
     resp = session.get(site)
     
-    tables = pd.read_html(resp.html.raw_html)  
+    tables = pd.read_html(io.StringIO(resp.html.raw_html))
     
     df = tables[0].copy()
     
@@ -721,7 +736,7 @@ def get_top_crypto():
     
     resp = session.get("https://finance.yahoo.com/cryptocurrencies?offset=0&count=100")
     
-    tables = pd.read_html(resp.html.raw_html)               
+    tables = pd.read_html(io.StringIO(resp.html.raw_html))
                     
     df = tables[0].copy()
 
@@ -1002,7 +1017,7 @@ def get_currencies(headers = {'User-agent': 'Mozilla/5.0'}):
     '''Returns the currencies table from Yahoo Finance'''
     
     site = "https://finance.yahoo.com/currencies"
-    tables = pd.read_html(requests.get(site, headers=headers).text)
+    tables = pd.read_html(io.StringIO(requests.get(site, headers=headers).text))
     
     result = tables[0]
     
@@ -1014,7 +1029,7 @@ def get_futures(headers = {'User-agent': 'Mozilla/5.0'}):
     '''Returns the futures table from Yahoo Finance'''
     
     site = "https://finance.yahoo.com/commodities"
-    tables = pd.read_html(requests.get(site, headers=headers).text)
+    tables = pd.read_html(io.StringIO(requests.get(site, headers=headers).text))
     
     result = tables[0]
     
@@ -1027,7 +1042,7 @@ def get_undervalued_large_caps(headers = {'User-agent': 'Mozilla/5.0'}):
     
     site = "https://finance.yahoo.com/screener/predefined/undervalued_large_caps?offset=0&count=100"
     
-    tables = pd.read_html(requests.get(site, headers=headers).text)
+    tables = pd.read_html(io.StringIO(requests.get(site, headers=headers).text))
     
     result = tables[0]
     
